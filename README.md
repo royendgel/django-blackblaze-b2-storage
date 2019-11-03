@@ -3,51 +3,54 @@ BACKBLAZE B2 Storage for Django
 
 BackBlaze B2 Storage for django.
 
-###installation
+### Installation
+
 via PIP:
 
     pip install django-backblazeb2-storage
 
 Manual:
 
-clone this repo locally using `git clone git@github.com:royendgel/django-backblazeb2-storage.git`
-and run `python setup.py install`
+    pip install git+git://github.com/royendgel/django-backblazeb2-storage.git
 
-###Usage
+### Usage
 
-Set this in ypour settings (usualy settings.py)
+Add these to your Django app's settings
 
-    BACKBLAZEB2_ACCOUNT_ID = 'your-account-id'
+    BACKBLAZEB2_APP_KEY_ID = 'your-app-key-id'
     BACKBLAZEB2_APP_KEY = 'your-app-key'
     BACKBLAZEB2_BUCKET_NAME = 'bucketname'
+    BACKBLAZEB2_BUCKET_ID = 'bucketid'
 
-To make it your default django storage : 
+To make it your default django storage:
 
+    DEFAULT_FILE_STORAGE = 'b2_storage.storage.B2Storage'
 
-    DEFAULT_FILE_STORAGE = 'b2_storage.B2Storage'
+Due to the way B2 requires information from the Storage to retrieve and delete files, the FileField value contains a hybrid of 2 values. These are hidden by the Storage API, but they do require that the FileField have a longer than default `max_length` value. The recommended setting is below:
 
+    class UserUpload(models.Model):
+        file = models.FileField(upload_to='media/', max_length=500)
 
-if you are making alot of api calls I recommend you to use the b2_storage.authorise,
-it stores the seconds in your database and reuses the authorisation_token for other calls.
-for this you need to include `'b2_storage.authorise',` in your INSTALLED_APPS
+### Managing Authorization Requests
 
-Storage Implimentation : 
+Backblaze authorization tokens expire after "at most 24 hours" according to the Backblaze documentation. This means that we need to periodically reauthorize ourselves against Backblaze. By default, a new authorization token is retrieved after 1 hour. Any requests made by the Storage class in that hour will use the same token. If this setting is not ideal for your uses, you can override the setting in your `settings.py` like so:
 
-- save
+    BACKBLAZEB2_AUTHORIZATION_BUFFER = timedelta(hours=23)
 
-    Save the file (overwrite if it already exists)
+**Note: This setting should always be less than 24 hours according to the Backblaze documentation.**
 
-- open
+For more information, [see b2_authorize_account](https://www.backblaze.com/b2/docs/b2_authorize_account.html)
 
-    Open a file using the filename (the latest version of the file).
+### Providing Diagnostics to B2
 
-- delete
+According to the [Backblaze B2 documentation](https://www.backblaze.com/b2/docs/integration_checklist.html):
 
-    Deletes the file (all versions of the file)
-    
+> A User-Agent header should identify your integration and software version number for all B2 API requests. It is also helpful to report operating system and other dependencies. The User-Agent header is part of RFC 7231. If the Backblaze operations team observes anomalous behavior with your integration, the team can identify and reach out proactively.
 
-some notes :
+By default, `django-backblazeb2-storage` sends a `User-Agent` of `django-backblazeb2-storage/v2`. It is recommended to change this value to something specific to your application using the following setting:
 
-Everytime you overwrite a file in backblaze b2 it will create a new file version.
-When you download the file the latest version will be downloaded. 
-this is the same behavior as s3 but it is enabled be default.
+    BACKBLAZEB2_USER_AGENT = 'my-custom-application/django-backblazeb2+python3.6.2'
+
+Backblaze recommends the following format:
+
+    User-Agent: <product> / <product-version+dependencies> <comment>

@@ -114,7 +114,7 @@ class BackBlazeB2(object):
             self.authorize()
 
         r = requests.get(
-            get_file_url(name),
+            self.get_file_url(name),
             headers={
                 'Authorization': self.authorization_token,
                 'User-Agent': self.user_agent,

@@ -1,9 +1,13 @@
 import base64
 from contextlib import closing
 from datetime import datetime, timedelta
+import logging
 
 import requests
 import hashlib
+
+
+logger = logging.getLogger(__name__)
 
 
 B2_BASE = 'https://api.backblazeb2.com/b2api/v2'
@@ -36,6 +40,7 @@ class BackBlazeB2(object):
         self.authorize()
 
     def authorize(self):
+        logger.debug('Authorizing request to B2')
         key = base64.b64encode(f'{self.key_id}:{self.app_key}'.encode('utf-8')).decode('utf-8')
         response = requests.get(
             AUTHORIZE_URL,
@@ -53,15 +58,8 @@ class BackBlazeB2(object):
         self.authorization_token = resp['authorizationToken']
         self.authorized_at = datetime.now()
 
-    def is_authorized(self):
-        return (
-            self.authorized_at is not None
-            and self.authorized_at + self.reauthorization_buffer > datetime.now()
-        )
-
     def get_upload_url(self):
-        if not self.is_authorized():
-            self.authorize()
+        self.authorize()
 
         r = requests.get(
             self._build_url('b2_get_upload_url'),
@@ -74,7 +72,7 @@ class BackBlazeB2(object):
         r.raise_for_status()
         return r.json()
 
-    def upload_file(self, name, content):
+    def upload_file(self, name, content, i=1, max_attempts=3):
         response = self.get_upload_url()
 
         sha1 = hashlib.sha1(content.read()).hexdigest()
@@ -91,12 +89,29 @@ class BackBlazeB2(object):
             },
             data=content.read()
         )
-        upload_response.raise_for_status()
-        return upload_response.json()
+
+        try:
+            upload_response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code in (401, 503) and i < max_attempts:
+                logger.warning('Recieved file upload error. Retrying...')
+                # B2 Docs: Call b2_get_upload_url again to get a new auth token.
+                # https://www.backblaze.com/b2/docs/b2_upload_file.html
+                self.authorize()
+                content.seek(0)
+                return self.upload_file(name, content, i=i+1)
+            else:
+                logger.error(
+                    f'Unable to recover from error while uploading file. '
+                    f'{e.response.text}'
+                )
+                raise e
+        else:
+            return upload_response.json()
+
 
     def get_file_info(self, file_id):
-        if not self.is_authorized():
-            self.authorize()
+        self.authorize()
 
         r = requests.get(
             self._build_url('b2_get_file_info'),
@@ -110,11 +125,10 @@ class BackBlazeB2(object):
         return r
 
     def download_file(self, name):
-        if not self.is_authorized():
-            self.authorize()
+        self.authorize()
 
         r = requests.get(
-            get_file_url(name),
+            self.get_file_url(name),
             headers={
                 'Authorization': self.authorization_token,
                 'User-Agent': self.user_agent,
@@ -124,8 +138,7 @@ class BackBlazeB2(object):
         return r.content
 
     def delete_file_version(self, filename, file_id):
-        if not self.is_authorized():
-            self.authorize()
+        self.authorize()
 
         r = requests.get(
             self._build_url('b2_delete_file_version'),

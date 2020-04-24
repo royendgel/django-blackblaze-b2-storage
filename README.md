@@ -15,6 +15,15 @@ Manual:
 
 ### Usage
 
+Add to installed apps
+
+```python
+INSTALLED_APPS = [
+    #...
+    'b2_storage',
+]
+```
+
 Add these to your Django app's settings
 
     BACKBLAZEB2_APP_KEY_ID = 'your-app-key-id'

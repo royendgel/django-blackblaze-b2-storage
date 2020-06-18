@@ -29,7 +29,8 @@ class B2Storage(Storage):
         self.b2 = BackBlazeB2(**kwargs)
 
     def _open(self, name, mode='rb'):
-        resp = self.b2.download_file(name)
+        filename, _ = name.split(INTERNAL_SPLIT)
+        resp = self.b2.download_file(filename)
 
         output = BytesIO()
         output.write(resp)

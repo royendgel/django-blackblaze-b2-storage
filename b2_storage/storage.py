@@ -55,7 +55,11 @@ class B2Storage(Storage):
 
     def size(self, name):
         _, file_id = name.split(INTERNAL_SPLIT)
-        return self.b2.get_file_info(file_id)['contentLength']
+        try:
+            info = self.b2.get_file_info(file_id).json()
+            return info['contentLength']
+        except Exception:
+            return None
 
     def url(self, name):
         filename, _ = name.split(INTERNAL_SPLIT)
